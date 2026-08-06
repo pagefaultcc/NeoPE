@@ -15,6 +15,7 @@
 #define NEOPE_END_NAMESPACE_ }
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #pragma region WINDOWS_DEFINITIONS
@@ -122,10 +123,37 @@ static std::string ErrorToStr(const EError& Error)
     }
 }
 
+class PESection
+{
+public:
+    explicit PESection(const IMAGE_SECTION_HEADER& SectionHeader) : m_imgSectionHeader(SectionHeader) {};
+
+    [[nodiscard]] inline std::string GetName() const
+    {
+        const char* rawName = reinterpret_cast<const char*>(m_imgSectionHeader.Name);
+        const size_t length = strnlen(rawName, IMAGE_SIZEOF_SHORT_NAME);
+
+        if (length == 0)
+            return "INVALID";
+
+        return { std::string(rawName, length) };
+    }
+
+    [[nodiscard]] inline bool HasCharacteristic(const DWORD Characteristic) const { return (m_imgSectionHeader.Characteristics & Characteristic) == Characteristic; }
+
+    inline void AddCharacteristic(const DWORD Characteristic) { m_imgSectionHeader.Characteristics |= Characteristic; }
+    inline void RemoveCharacteristic(const DWORD Characteristic) { m_imgSectionHeader.Characteristics &= ~Characteristic; }
+
+    [[nodiscard]] inline PIMAGE_SECTION_HEADER GetSectionHeader() const { return const_cast<const PIMAGE_SECTION_HEADER>(&m_imgSectionHeader); }
+
+private:
+    IMAGE_SECTION_HEADER m_imgSectionHeader;
+};
+
 class PE
 {
 public:
-    explicit PE(unsigned char Data[], size_t Size)
+    explicit PE(unsigned char Data[], const size_t Size)
     {
         m_eLastError = Load(Data, Size);
     }
@@ -134,15 +162,13 @@ public:
     [[nodiscard]] inline PIMAGE_DOS_HEADER GetDosHeader()           const { return const_cast<const PIMAGE_DOS_HEADER>(&m_imgDosHeader); }
     [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders()           const { return const_cast<const PIMAGE_NT_HEADERS>(&m_imgNtHeaders); }
     [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return const_cast<const PIMAGE_OPTIONAL_HEADER>(&m_imgOptionalHeader); }
+    [[nodiscard]] inline std::vector<PESection>* GetSections()      const { return const_cast<std::vector<PESection>*>(&m_vecSections); }
 
     [[nodiscard]] inline EError GetError() const { return m_eLastError; }
 
 private:
     bool ParseDosHeader()
     {
-        if (!m_pData)
-            return false;
-
         if (m_iSize < sizeof(IMAGE_DOS_HEADER))
         {
             m_eLastError = E_TOO_SMALL_BINARY;
@@ -164,9 +190,6 @@ private:
 
     bool ParseNtHeaders()
     {
-        if (!m_pData)
-            return false;
-
         m_imgNtHeaders = *reinterpret_cast<IMAGE_NT_HEADERS*>(m_pData + m_imgDosHeader.e_lfanew);
 
         if (m_imgNtHeaders.Signature != IMAGE_NT_SIGNATURE)
@@ -189,10 +212,30 @@ private:
 
     bool ParseSectionHeaders()
     {
+        const auto* pSectionHeader =
+            reinterpret_cast<const IMAGE_SECTION_HEADER*>(
+                m_pData
+                + m_imgDosHeader.e_lfanew
+                + offsetof(IMAGE_NT_HEADERS, OptionalHeader)
+                + m_imgNtHeaders.FileHeader.SizeOfOptionalHeader
+            );
+
+        if (!pSectionHeader)
+            return false;
+
+        const WORD numberOfSections = m_imgNtHeaders.FileHeader.NumberOfSections;
+
+        for (WORD i = 0; i < numberOfSections; ++i)
+        {
+            PESection Section(pSectionHeader[i]);
+
+            m_vecSections.push_back(Section);
+        }
+
         return true;
     }
 
-    EError Load(unsigned char Data[], size_t Size)
+    EError Load(unsigned char Data[], const size_t Size)
     {
         m_pData = Data;
         m_iSize = Size;
@@ -220,14 +263,15 @@ private:
     IMAGE_DOS_HEADER m_imgDosHeader = {};
     IMAGE_NT_HEADERS m_imgNtHeaders = {};
     IMAGE_OPTIONAL_HEADER64 m_imgOptionalHeader = {};
+    std::vector<PESection> m_vecSections;
 
     // Internal
 
     // I want to clarify myself in here, this just stored for startup, afterwards everything is parsed, stays in the fields in this class.
     // This is done because if the Data pointer given by used could be deleted afterwards and we dont want use-after-free.
     //                                                                                                              --- kenanwastaken
-    unsigned char* m_pData;
-    size_t m_iSize;
+    unsigned char* m_pData = nullptr;
+    size_t m_iSize = -1;
 
     EError m_eLastError = E_NONE;
 };
