@@ -23,7 +23,6 @@
 #if defined(_WIN64)
 #include <Windows.h>
 #else
-constexpr short IMAGE_DOS_SIGNATURE = 23117;
 
 typedef unsigned char BYTE;
 typedef char CHAR;
@@ -57,6 +56,8 @@ typedef __int64 LONG64;
 typedef unsigned int ULONG32;
 typedef unsigned __int64 ULONG64;
 
+#define IMAGE_SIZEOF_SHORT_NAME 8
+
 //0x40 bytes (sizeof)
 typedef struct _IMAGE_DOS_HEADER
 {
@@ -80,6 +81,107 @@ typedef struct _IMAGE_DOS_HEADER
     USHORT e_res2[10];                                                      //0x28
     LONG e_lfanew;                                                          //0x3c
 } IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
+
+//0x28 bytes (sizeof)
+typedef struct _IMAGE_SECTION_HEADER
+{
+    UCHAR Name[8];                                                          //0x0
+    union
+    {
+        ULONG PhysicalAddress;                                              //0x8
+        ULONG VirtualSize;                                                  //0x8
+    } Misc;                                                                 //0x8
+    ULONG VirtualAddress;                                                   //0xc
+    ULONG SizeOfRawData;                                                    //0x10
+    ULONG PointerToRawData;                                                 //0x14
+    ULONG PointerToRelocations;                                             //0x18
+    ULONG PointerToLinenumbers;                                             //0x1c
+    USHORT NumberOfRelocations;                                             //0x20
+    USHORT NumberOfLinenumbers;                                             //0x22
+    ULONG Characteristics;                                                  //0x24
+} IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
+
+//0x14 bytes (sizeof)
+typedef struct _IMAGE_FILE_HEADER
+{
+    USHORT Machine;                                                         //0x0
+    USHORT NumberOfSections;                                                //0x2
+    ULONG TimeDateStamp;                                                    //0x4
+    ULONG PointerToSymbolTable;                                             //0x8
+    ULONG NumberOfSymbols;                                                  //0xc
+    USHORT SizeOfOptionalHeader;                                            //0x10
+    USHORT Characteristics;                                                 //0x12
+} IMAGE_FILE_HEADER, *PIMAGE_FILE_HEADER;
+
+//0x8 bytes (sizeof)
+struct _IMAGE_DATA_DIRECTORY
+{
+    ULONG VirtualAddress;                                                   //0x0
+    ULONG Size;                                                             //0x4
+};
+
+//0xf0 bytes (sizeof)
+typedef struct _IMAGE_OPTIONAL_HEADER64
+{
+    USHORT Magic;                                                           //0x0
+    UCHAR MajorLinkerVersion;                                               //0x2
+    UCHAR MinorLinkerVersion;                                               //0x3
+    ULONG SizeOfCode;                                                       //0x4
+    ULONG SizeOfInitializedData;                                            //0x8
+    ULONG SizeOfUninitializedData;                                          //0xc
+    ULONG AddressOfEntryPoint;                                              //0x10
+    ULONG BaseOfCode;                                                       //0x14
+    ULONGLONG ImageBase;                                                    //0x18
+    ULONG SectionAlignment;                                                 //0x20
+    ULONG FileAlignment;                                                    //0x24
+    USHORT MajorOperatingSystemVersion;                                     //0x28
+    USHORT MinorOperatingSystemVersion;                                     //0x2a
+    USHORT MajorImageVersion;                                               //0x2c
+    USHORT MinorImageVersion;                                               //0x2e
+    USHORT MajorSubsystemVersion;                                           //0x30
+    USHORT MinorSubsystemVersion;                                           //0x32
+    ULONG Win32VersionValue;                                                //0x34
+    ULONG SizeOfImage;                                                      //0x38
+    ULONG SizeOfHeaders;                                                    //0x3c
+    ULONG CheckSum;                                                         //0x40
+    USHORT Subsystem;                                                       //0x44
+    USHORT DllCharacteristics;                                              //0x46
+    ULONGLONG SizeOfStackReserve;                                           //0x48
+    ULONGLONG SizeOfStackCommit;                                            //0x50
+    ULONGLONG SizeOfHeapReserve;                                            //0x58
+    ULONGLONG SizeOfHeapCommit;                                             //0x60
+    ULONG LoaderFlags;                                                      //0x68
+    ULONG NumberOfRvaAndSizes;                                              //0x6c
+    struct _IMAGE_DATA_DIRECTORY DataDirectory[16];                         //0x70
+} IMAGE_OPTIONAL_HEADER64, *PIMAGE_OPTIONAL_HEADER64;
+
+typedef struct _IMAGE_NT_HEADERS64
+{
+    ULONG Signature;                                                        //0x0
+    struct _IMAGE_FILE_HEADER FileHeader;                                   //0x4
+    struct _IMAGE_OPTIONAL_HEADER64 OptionalHeader;                         //0x18
+} IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
+
+#ifdef _WIN64
+typedef IMAGE_NT_HEADERS64                  IMAGE_NT_HEADERS;
+typedef PIMAGE_NT_HEADERS64                 PIMAGE_NT_HEADERS;
+#else
+typedef IMAGE_NT_HEADERS32                  IMAGE_NT_HEADERS;
+typedef PIMAGE_NT_HEADERS32                 PIMAGE_NT_HEADERS;
+#endif
+
+#ifdef _WIN64
+typedef IMAGE_OPTIONAL_HEADER64             IMAGE_OPTIONAL_HEADER;
+typedef PIMAGE_OPTIONAL_HEADER64            PIMAGE_OPTIONAL_HEADER;
+#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR64_MAGIC
+#else
+typedef IMAGE_OPTIONAL_HEADER32             IMAGE_OPTIONAL_HEADER;
+typedef PIMAGE_OPTIONAL_HEADER32            PIMAGE_OPTIONAL_HEADER;
+#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR32_MAGIC
+#endif
+
+#define IMAGE_DOS_SIGNATURE                 0x5A4D      // MZ
+#define IMAGE_NT_SIGNATURE                  0x00004550  // PE00
 
 #endif
 #pragma endregion
