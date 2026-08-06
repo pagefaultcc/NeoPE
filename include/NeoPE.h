@@ -93,6 +93,7 @@ enum EError : uint16_t
 
     E_SUCCESS,
     E_TOO_SMALL_BINARY,
+    E_INVALID_BINARY,
     E_INVALID_DOS_SIGNATURE,
     E_INVALID_HEADER_SIGNATURE,
 
@@ -121,22 +122,6 @@ static std::string ErrorToStr(const EError& Error)
     }
 }
 
-class PESection
-{
-public:
-    PESection(PIMAGE_SECTION_HEADER SectionHeader)
-    {
-
-    }
-
-    [[nodiscard]] inline std::string GetSectionName(const IMAGE_SECTION_HEADER* sec) const { return m_szSectionName; }
-    [[nodiscard]] inline PIMAGE_SECTION_HEADER GetSectionHeader() { return reinterpret_cast<PIMAGE_SECTION_HEADER>(&m_imgHeader); }
-
-private:
-    std::string m_szSectionName;
-    IMAGE_SECTION_HEADER m_imgHeader; // storing as pointer from Data[] is not good for me, could been deleted already. Just make a copy.
-};
-
 class PE
 {
 public:
@@ -146,9 +131,9 @@ public:
     }
     ~PE() = default;
 
-    [[nodiscard]] inline PIMAGE_DOS_HEADER GetDosHeader() const { return m_imgDosHeader; }
-    [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders() const { return m_imgNtHeaders; }
-    [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return m_imgOptionalHeader; }
+    [[nodiscard]] inline PIMAGE_DOS_HEADER GetDosHeader()           const { return const_cast<const PIMAGE_DOS_HEADER>(&m_imgDosHeader); }
+    [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders()           const { return const_cast<const PIMAGE_NT_HEADERS>(&m_imgNtHeaders); }
+    [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return const_cast<const PIMAGE_OPTIONAL_HEADER>(&m_imgOptionalHeader); }
 
     [[nodiscard]] inline EError GetError() const { return m_eLastError; }
 
@@ -164,9 +149,9 @@ private:
             return false;
         }
 
-        m_imgDosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(m_pData);
+        m_imgDosHeader = *reinterpret_cast<IMAGE_DOS_HEADER*>(m_pData);
 
-        if (m_imgDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+        if (m_imgDosHeader.e_magic != IMAGE_DOS_SIGNATURE)
         {
             m_eLastError = E_INVALID_DOS_SIGNATURE;
             return false;
@@ -182,9 +167,9 @@ private:
         if (!m_pData)
             return false;
 
-        m_imgNtHeaders = reinterpret_cast<IMAGE_NT_HEADERS*>(m_pData + m_imgDosHeader->e_lfanew);
+        m_imgNtHeaders = *reinterpret_cast<IMAGE_NT_HEADERS*>(m_pData + m_imgDosHeader.e_lfanew);
 
-        if (m_imgNtHeaders->Signature != IMAGE_NT_SIGNATURE)
+        if (m_imgNtHeaders.Signature != IMAGE_NT_SIGNATURE)
         {
             m_eLastError = E_INVALID_HEADER_SIGNATURE;
             return false;
@@ -197,19 +182,13 @@ private:
 
     bool ParseOptionalHeader()
     {
-        if (!m_pData)
-            return false;
-
-        m_imgOptionalHeader = &m_imgNtHeaders->OptionalHeader;
+        m_imgOptionalHeader = m_imgNtHeaders.OptionalHeader;
 
         return true;
     }
 
     bool ParseSectionHeaders()
     {
-        if (!m_pData)
-            return false;
-
         return true;
     }
 
@@ -217,6 +196,9 @@ private:
     {
         m_pData = Data;
         m_iSize = Size;
+
+        if (!Data)
+            return EError::E_INVALID_BINARY;
 
         if (!ParseDosHeader())
             return m_eLastError;
@@ -234,12 +216,19 @@ private:
     }
 
     // PE
-    PIMAGE_DOS_HEADER m_imgDosHeader = nullptr;
-    PIMAGE_NT_HEADERS m_imgNtHeaders = nullptr;
-    PIMAGE_OPTIONAL_HEADER64 m_imgOptionalHeader = nullptr;
 
-    unsigned char* m_pData = nullptr;
-    size_t m_iSize = -1;
+    IMAGE_DOS_HEADER m_imgDosHeader = {};
+    IMAGE_NT_HEADERS m_imgNtHeaders = {};
+    IMAGE_OPTIONAL_HEADER64 m_imgOptionalHeader = {};
+
+    // Internal
+
+    // I want to clarify myself in here, this just stored for startup, afterwards everything is parsed, stays in the fields in this class.
+    // This is done because if the Data pointer given by used could be deleted afterwards and we dont want use-after-free.
+    //                                                                                                              --- kenanwastaken
+    unsigned char* m_pData;
+    size_t m_iSize;
+
     EError m_eLastError = E_NONE;
 };
 
