@@ -44,9 +44,4 @@ int main(int argc, char** argv)
     PRINT_PROP("Signature", NtHeaders->Signature);
     PRINT_PROP("FileHeader", (void*)&NtHeaders->FileHeader);
     PRINT_PROP("OptionalHeader", (void*)&NtHeaders->OptionalHeader);
-
-    for (auto Section : *pe.GetSections())
-    {
-        PRINT_SUBJECT(Section.GetName());
-    }
 }
