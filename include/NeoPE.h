@@ -22,6 +22,7 @@
 
 #if defined(_WIN64)
 #include <Windows.h>
+#include <wintrust.h>
 #else
 
 typedef unsigned char BYTE;
@@ -252,6 +253,19 @@ private:
     IMAGE_SECTION_HEADER m_imgSectionHeader;
 };
 
+class PEExportedFunction
+{
+public:
+    explicit PEExportedFunction(PIMAGE_DOS_HEADER ImageDosHeader) {}
+};
+
+#define NEOPE_INTERNAL_GATHER_DATADIR(x, m)                                                 \
+    IMAGE_DATA_DIRECTORY p##x##Dir = m_imgOptionalHeader->DataDirectory[x];                  \
+    DWORD x##RVA    = p##x##Dir.VirtualAddress;                                              \
+    if (!x##RVA) return false;                                                              \
+    DWORD x##Offset = RvaToOffset(x##RVA);                                                  \
+    m = reinterpret_cast<decltype(m)>(m_pData + x##Offset)
+
 class PE
 {
 public:
@@ -261,9 +275,9 @@ public:
     }
     ~PE() = default;
 
-    [[nodiscard]] inline PIMAGE_DOS_HEADER GetDosHeader()           const { return const_cast<const PIMAGE_DOS_HEADER>(&m_imgDosHeader); }
-    [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders()           const { return const_cast<const PIMAGE_NT_HEADERS>(&m_imgNtHeaders); }
-    [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return const_cast<const PIMAGE_OPTIONAL_HEADER>(&m_imgOptionalHeader); }
+    [[nodiscard]] inline PIMAGE_DOS_HEADER GetDosHeader()           const { return m_imgDosHeader; }
+    [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders()           const { return m_imgNtHeaders; }
+    [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return m_imgOptionalHeader; }
     [[nodiscard]] inline std::vector<PESection>* GetSections()      const { return const_cast<std::vector<PESection>*>(&m_vecSections); }
 
     [[nodiscard]] inline EError GetError() const { return m_eLastError; }
@@ -288,9 +302,9 @@ private:
             return false;
         }
 
-        m_imgDosHeader = *reinterpret_cast<IMAGE_DOS_HEADER*>(m_pData);
+        m_imgDosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(m_pData);
 
-        if (m_imgDosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+        if (m_imgDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
         {
             m_eLastError = E_INVALID_DOS_SIGNATURE;
             return false;
@@ -303,9 +317,9 @@ private:
 
     bool ParseNtHeaders()
     {
-        m_imgNtHeaders = *reinterpret_cast<IMAGE_NT_HEADERS*>(m_pData + m_imgDosHeader.e_lfanew);
+        m_imgNtHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(m_pData + m_imgDosHeader->e_lfanew);
 
-        if (m_imgNtHeaders.Signature != IMAGE_NT_SIGNATURE)
+        if (m_imgNtHeaders->Signature != IMAGE_NT_SIGNATURE)
         {
             m_eLastError = E_INVALID_HEADER_SIGNATURE;
             return false;
@@ -318,7 +332,7 @@ private:
 
     bool ParseOptionalHeader()
     {
-        m_imgOptionalHeader = m_imgNtHeaders.OptionalHeader;
+        m_imgOptionalHeader = &m_imgNtHeaders->OptionalHeader;
 
         return true;
     }
@@ -328,15 +342,15 @@ private:
         const auto* pSectionHeader =
             reinterpret_cast<const IMAGE_SECTION_HEADER*>(
                 m_pData
-                + m_imgDosHeader.e_lfanew
+                + m_imgDosHeader->e_lfanew
                 + offsetof(IMAGE_NT_HEADERS, OptionalHeader)
-                + m_imgNtHeaders.FileHeader.SizeOfOptionalHeader
+                + m_imgNtHeaders->FileHeader.SizeOfOptionalHeader
             );
 
         if (!pSectionHeader)
             return false;
 
-        const WORD numberOfSections = m_imgNtHeaders.FileHeader.NumberOfSections;
+        const WORD numberOfSections = m_imgNtHeaders->FileHeader.NumberOfSections;
 
         for (WORD i = 0; i < numberOfSections; ++i)
         {
@@ -346,6 +360,46 @@ private:
         }
 
         return true;
+    }
+
+    [[nodiscard]] bool ParseExports() const
+    {
+        return true;
+    }
+
+    [[nodiscard]] bool ParseDataDirectories()
+    {
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_EXPORT,         m_pExportDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_IMPORT,         m_pImportDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_RESOURCE,       m_pResourceDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_EXCEPTION,      m_pExceptionDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_SECURITY,       m_pSecurityDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_BASERELOC,      m_pBaseRelocDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_DEBUG,          m_pDebugDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_ARCHITECTURE,   m_pArchitectureDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_GLOBALPTR,      m_pGlobalPtrDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_TLS,            m_pTlsDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG,    m_pConfigDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT,   m_pBoundImportDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_IAT,            m_pThunkDataDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT,   m_pDelayLoadDir);
+        NEOPE_INTERNAL_GATHER_DATADIR(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, m_pCor20Dir);
+
+        return true;
+    }
+
+    [[nodiscard]] DWORD RvaToOffset(const DWORD Rva) const
+    {
+        for (auto& Section : m_vecSections)
+        {
+            const auto SectionHeader = Section.GetSectionHeader();
+
+            const DWORD start = SectionHeader->VirtualAddress;
+            if (const DWORD end = start + SectionHeader->Misc.VirtualSize; Rva >= start && Rva < end)
+                return Rva - start + SectionHeader->PointerToRawData;
+        }
+
+        return 0;
     }
 
     EError Load(unsigned char Data[], const size_t Size)
@@ -372,17 +426,28 @@ private:
     }
 
     // PE
-
-    IMAGE_DOS_HEADER m_imgDosHeader = {};
-    IMAGE_NT_HEADERS m_imgNtHeaders = {};
-    IMAGE_OPTIONAL_HEADER64 m_imgOptionalHeader = {};
+    PIMAGE_DOS_HEADER m_imgDosHeader = {};
+    PIMAGE_NT_HEADERS m_imgNtHeaders = {};
+    PIMAGE_OPTIONAL_HEADER m_imgOptionalHeader = {};
     std::vector<PESection> m_vecSections;
 
-    // Internal
+    PIMAGE_EXPORT_DIRECTORY          m_pExportDir        = nullptr;
+    PIMAGE_IMPORT_DESCRIPTOR         m_pImportDir        = nullptr;
+    PIMAGE_RESOURCE_DIRECTORY        m_pResourceDir      = nullptr;
+    PIMAGE_RUNTIME_FUNCTION_ENTRY    m_pExceptionDir     = nullptr;
+    LPWIN_CERTIFICATE                m_pSecurityDir      = nullptr;
+    PIMAGE_BASE_RELOCATION           m_pBaseRelocDir     = nullptr;
+    PIMAGE_DEBUG_DIRECTORY           m_pDebugDir         = nullptr;
+    PIMAGE_ARCHITECTURE_HEADER       m_pArchitectureDir  = nullptr;
+    PVOID                            m_pGlobalPtrDir     = nullptr;
+    PIMAGE_TLS_DIRECTORY             m_pTlsDir           = nullptr;
+    PIMAGE_LOAD_CONFIG_DIRECTORY     m_pConfigDir        = nullptr;
+    PIMAGE_BOUND_IMPORT_DESCRIPTOR   m_pBoundImportDir   = nullptr;
+    PIMAGE_THUNK_DATA                m_pThunkDataDir     = nullptr;
+    PIMAGE_DELAYLOAD_DESCRIPTOR      m_pDelayLoadDir     = nullptr;
+    PIMAGE_COR20_HEADER              m_pCor20Dir         = nullptr;
 
-    // I want to clarify myself in here, this just stored for startup, afterwards everything is parsed, stays in the fields in this class.
-    // This is done because if the Data pointer given by used could be deleted afterwards and we dont want use-after-free.
-    //                                                                                                              --- kenanwastaken
+    // Internal
     unsigned char* m_pData = nullptr;
     size_t m_iSize = -1;
 
