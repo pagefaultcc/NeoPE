@@ -19,7 +19,6 @@
 #include <vector>
 
 #pragma region WINDOWS_DEFINITIONS
-
 #if defined(_WIN64)
 #include <Windows.h>
 #include <wintrust.h>
@@ -190,6 +189,12 @@ typedef PIMAGE_OPTIONAL_HEADER32            PIMAGE_OPTIONAL_HEADER;
 NEOPE_START_NAMESPACE_
 
 #define PE_FAILED(error) error < 1
+#define NEOPE_INTERNAL_GATHER_DATADIR(x, m)                                                 \
+    IMAGE_DATA_DIRECTORY p##x##Dir = m_imgOptionalHeader->DataDirectory[x];                  \
+    DWORD x##RVA    = p##x##Dir.VirtualAddress;                                              \
+    if (!x##RVA) return false;                                                              \
+    DWORD x##Offset = RvaToOffset(x##RVA);                                                  \
+    m = reinterpret_cast<decltype(m)>(m_pData + x##Offset)
 
 enum EError : uint16_t
 {
@@ -243,7 +248,6 @@ public:
     }
 
     [[nodiscard]] inline bool HasCharacteristic(const DWORD Characteristic) const { return (m_imgSectionHeader.Characteristics & Characteristic) == Characteristic; }
-
     inline void AddCharacteristic(const DWORD Characteristic) { m_imgSectionHeader.Characteristics |= Characteristic; }
     inline void RemoveCharacteristic(const DWORD Characteristic) { m_imgSectionHeader.Characteristics &= ~Characteristic; }
 
@@ -263,13 +267,6 @@ public:
 
 private:
 };
-
-#define NEOPE_INTERNAL_GATHER_DATADIR(x, m)                                                 \
-    IMAGE_DATA_DIRECTORY p##x##Dir = m_imgOptionalHeader->DataDirectory[x];                  \
-    DWORD x##RVA    = p##x##Dir.VirtualAddress;                                              \
-    if (!x##RVA) return false;                                                              \
-    DWORD x##Offset = RvaToOffset(x##RVA);                                                  \
-    m = reinterpret_cast<decltype(m)>(m_pData + x##Offset)
 
 class PE
 {
