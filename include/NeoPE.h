@@ -15,6 +15,7 @@
 #define NEOPE_END_NAMESPACE_ }
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -260,12 +261,33 @@ private:
 class PEExportedFunction
 {
 public:
-    explicit PEExportedFunction(const std::string_view& szName)
+    explicit PEExportedFunction(
+        const std::string_view& szName,
+        const uint32_t          iOrdinal,
+        const uint32_t          iRva,
+        const bool              bCouldBeBadExportedFunction
+        )
+    {
+
+    }
+
+    explicit PEExportedFunction(
+        const std::string_view& szName,
+        const uint32_t          iOrdinal,
+        const uint32_t          iRva,
+        PEExportedFunction      cForwarded,
+        const bool              bCouldBeBadExportedFunction
+    )
     {
 
     }
 
 private:
+    std::string_view m_szName;
+    uint32_t m_iOrdinal;
+    uint32_t m_iRva;
+    bool m_bCouldBeBadExportedFunction;
+
 };
 
 class PE
