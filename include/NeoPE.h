@@ -256,7 +256,12 @@ private:
 class PEExportedFunction
 {
 public:
-    explicit PEExportedFunction(PIMAGE_DOS_HEADER ImageDosHeader) {}
+    explicit PEExportedFunction(const std::string_view& szName)
+    {
+
+    }
+
+private:
 };
 
 #define NEOPE_INTERNAL_GATHER_DATADIR(x, m)                                                 \
@@ -279,6 +284,22 @@ public:
     [[nodiscard]] inline PIMAGE_NT_HEADERS GetNtHeaders()           const { return m_imgNtHeaders; }
     [[nodiscard]] inline PIMAGE_OPTIONAL_HEADER GetOptionalHeader() const { return m_imgOptionalHeader; }
     [[nodiscard]] inline std::vector<PESection>* GetSections()      const { return const_cast<std::vector<PESection>*>(&m_vecSections); }
+
+    [[nodiscard]] inline PIMAGE_EXPORT_DIRECTORY        GetExportDir()        const { return m_pExportDir; }
+    [[nodiscard]] inline PIMAGE_IMPORT_DESCRIPTOR       GetImportDir()        const { return m_pImportDir; }
+    [[nodiscard]] inline PIMAGE_RESOURCE_DIRECTORY      GetResourceDir()      const { return m_pResourceDir; }
+    [[nodiscard]] inline PIMAGE_RUNTIME_FUNCTION_ENTRY  GetExceptionDir()     const { return m_pExceptionDir; }
+    [[nodiscard]] inline LPWIN_CERTIFICATE              GetSecurityDir()      const { return m_pSecurityDir; }
+    [[nodiscard]] inline PIMAGE_BASE_RELOCATION         GetBaseRelocDir()     const { return m_pBaseRelocDir; }
+    [[nodiscard]] inline PIMAGE_DEBUG_DIRECTORY         GetDebugDir()         const { return m_pDebugDir; }
+    [[nodiscard]] inline PIMAGE_ARCHITECTURE_HEADER     GetArchitectureDir()  const { return m_pArchitectureDir; }
+    [[nodiscard]] inline PVOID                          GetGlobalPtrDir()     const { return m_pGlobalPtrDir; }
+    [[nodiscard]] inline PIMAGE_TLS_DIRECTORY           GetTlsDir()           const { return m_pTlsDir; }
+    [[nodiscard]] inline PIMAGE_LOAD_CONFIG_DIRECTORY   GetConfigDir()        const { return m_pConfigDir; }
+    [[nodiscard]] inline PIMAGE_BOUND_IMPORT_DESCRIPTOR GetBoundImportDir()   const { return m_pBoundImportDir; }
+    [[nodiscard]] inline PIMAGE_THUNK_DATA              GetThunkDataDir()     const { return m_pThunkDataDir; }
+    [[nodiscard]] inline PIMAGE_DELAYLOAD_DESCRIPTOR    GetDelayLoadDir()     const { return m_pDelayLoadDir; }
+    [[nodiscard]] inline PIMAGE_COR20_HEADER            GetCor20Dir()         const { return m_pCor20Dir; }
 
     [[nodiscard]] inline EError GetError() const { return m_eLastError; }
 
@@ -420,6 +441,9 @@ private:
             return m_eLastError;
 
         if (!ParseSectionHeaders())
+            return m_eLastError;
+
+        if (!ParseDataDirectories())
             return m_eLastError;
 
         return EError::E_SUCCESS;
