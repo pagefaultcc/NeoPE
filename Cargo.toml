@@ -1,0 +1,14 @@
+[package]
+name = "neope"
+version = "0.0.0"
+edition = "2021"
+authors = ["pagefault.cc <https://github.com/pagefaultcc>"]
+description = "A cross-platform header-only and lightweight PE utility library."
+license = "MIT"
+repository = "https://github.com/pagefaultcc/NeoPE"
+
+[dependencies]
+
+[[example]]
+name = "from_buffer"
+path = "examples/from_buffer/main.rs"
